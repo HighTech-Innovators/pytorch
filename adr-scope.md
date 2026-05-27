@@ -21,4 +21,5 @@
 | ./scripts | yes | EXCLUDED | Utility scripts, not core system |
 | ./third_party | yes | EXCLUDED | Vendored/third-party |
 | ./binaries | yes | EXCLUDED | Build/config only |
+| ./cmake | no | EXCLUDED | Build/config only |
 | ./docs | yes | EXCLUDED | Documentation only |
