@@ -5,8 +5,9 @@
 | ./src/android | yes | COVERED |  |
 | ./src/aten | yes | COVERED |  |
 | ./src/benchmarks | yes | EXCLUDED | Benchmark scripts only |
-| ./src/binaries | yes | EXCLUDED | Built artifacts |
+| ./src/binaries | yes | COVERED |  |
 | ./src/c10 | yes | COVERED |  |
+| ./src/cmake | no | EXCLUDED | Build/config only |
 | ./src/caffe2 | yes | COVERED |  |
 | ./src/docs | yes | EXCLUDED | Documentation only |
 | ./src/functorch | yes | COVERED |  |
