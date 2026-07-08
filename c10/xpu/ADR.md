@@ -33,7 +33,7 @@ Other components call `device_count()`, `device_count_ensure_non_zero()`, `curre
 | Component | Direction | Nature |
 |---|---|---|
 | [c10/core](c10/core/ADR.md) | depends-on | Builds `Device`, `Stream`, `DeviceGuardImplInterface`, and `CachingDeviceAllocator` behavior on top of c10 core abstractions |
-| [aten/src/ATen/xpu](aten/src/ATen/xpu/ADR.md) | depended-on-by | ATen XPU code consumes XPU device properties, streams, events, and allocator hooks from this layer |
+| `aten/src/ATen/xpu` (no ADR) | depended-on-by | ATen XPU code consumes XPU device properties, streams, events, and allocator hooks from this layer |
 | [torch/xpu](torch/xpu/ADR.md) | depended-on-by | Python `torch.xpu` APIs surface device counts, stream semantics, event timing, and allocator state defined here |
 
 ## Runtime Behaviour

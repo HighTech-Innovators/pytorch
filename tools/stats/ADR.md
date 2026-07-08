@@ -29,7 +29,7 @@ This directory exposes CLI entry points in `upload_test_stats.py`, `check_disabl
 
 ## Dependencies
 
-No single src-local ADR dependency dominates this directory. The scripts mostly compose one another inside `tools/stats/` and talk directly to GitHub Actions, S3, DynamoDB, NVML, AMD SMI, and XML test reports.
+There are no notable src-local ADR-tracked dependencies. The scripts compose one another inside `tools/stats/` and talk directly to GitHub Actions, S3, DynamoDB, NVML, AMD SMI, and XML test reports.
 
 ## Runtime Behaviour
 

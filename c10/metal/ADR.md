@@ -32,8 +32,8 @@ Other components use `c10::metal::ScalarType`, `max_ndim`, `simdgroup_size`, `IL
 
 | Component | Direction | Nature |
 |---|---|---|
-| [aten/src/ATen/mps](aten/src/ATen/mps/ADR.md) | depended-on-by | Host-side MPS code includes `c10/metal/common.h` and `c10/metal/error.h` from files such as `EmptyTensor.cpp`, `MPSStream.mm`, and `OperationUtils.mm` |
-| [aten/src/ATen/native/mps](aten/src/ATen/native/mps/ADR.md) | depended-on-by | MPS kernels include `indexing.h`, `atomic.h`, `reduction_utils.h`, `random.h`, `special_math.h`, and `utils.h` from files such as `UnaryKernel.metal`, `Distributions.metal`, and `ReduceOps.metal` |
+| `aten/src/ATen/mps` (no ADR) | depended-on-by | Host-side MPS code includes `c10/metal/common.h` and `c10/metal/error.h` from files such as `EmptyTensor.cpp`, `MPSStream.mm`, and `OperationUtils.mm` |
+| `aten/src/ATen/native/mps` (no ADR) | depended-on-by | MPS kernels include `indexing.h`, `atomic.h`, `reduction_utils.h`, `random.h`, `special_math.h`, and `utils.h` from files such as `UnaryKernel.metal`, `Distributions.metal`, and `ReduceOps.metal` |
 
 ## Runtime Behaviour
 

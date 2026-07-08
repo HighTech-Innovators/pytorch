@@ -32,9 +32,9 @@ The primary entry points are `dims()`, `dimlists()`, `Dim`, `DimList`, `Tensor`,
 
 | Component | Direction | Nature |
 |---|---|---|
-| [torch/_C](torch/_C/ADR.md) | depends-on | Calls `torch._C._functorch._add_batch_dim` and `torch._C.TensorBase.__setitem__` from `Dim._get_batchtensor()`, `_Tensor.__torch_function__()`, and `setitem()` |
+| `torch._C` (C++ extension module, no ADR) | depends-on | Calls `torch._C._functorch._add_batch_dim` and `torch._C.TensorBase.__setitem__` from `Dim._get_batchtensor()`, `_Tensor.__torch_function__()`, and `setitem()` |
 | [functorch/einops](functorch/einops/ADR.md) | depended-on-by | `functorch.einops.rearrange` imports `dims` and lowers patterns through `tensor[...]` plus `order()` |
-| [torch/_tensor](torch/_tensor/ADR.md) | depended-on-by | `torch/_tensor.py` imports `functorch.dim.index` to expose first-class-dimension indexing from base tensors |
+| `torch/_tensor.py` (no ADR — single file, not a directory) | depended-on-by | imports `functorch.dim.index` to expose first-class-dimension indexing from base tensors |
 
 ## Runtime Behaviour
 

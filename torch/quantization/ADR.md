@@ -29,7 +29,7 @@ Public symbols include `quantize`, `quantize_dynamic`, `quantize_qat`, `prepare`
 
 | Component | Direction | Nature |
 |---|---|---|
-| [torch/ao/quantization](torch/ao/quantization/ADR.md) | depends-on | `quantize.py`, `observer.py`, and `qconfig.py` are explicit forwarding shims into the newer quantization implementation |
+| `torch/ao/quantization` (no ADR — `torch/ao` is EXCLUDED as leaf with no architectural boundary) | depends-on | `quantize.py`, `observer.py`, and `qconfig.py` are explicit forwarding shims into the newer quantization implementation |
 | [torch/nn](torch/nn/ADR.md) | depended-on-by | quantization entry points transform `nn.Module` graphs and `default_eval_fn` calibrates models by calling `model(data)` |
 
 ## Runtime Behaviour

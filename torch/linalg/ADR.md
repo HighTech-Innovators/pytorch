@@ -27,7 +27,7 @@ Representative public entry points include `cross`, `cholesky`, `cholesky_ex`, `
 | Component | Direction | Nature |
 |---|---|---|
 | [aten/src/ATen/native](aten/src/ATen/native/ADR.md) | depends-on | the namespace is a pure binding layer over `torch._C._linalg` builtins |
-| [torch/_torch_docs](torch/_torch_docs/ADR.md) | depends-on | `__init__.py` formats operator documentation and shared notes in Python before exposing the builtins |
+| `torch/_torch_docs.py` (no ADR — single file, not a directory) | depends-on | `__init__.py` formats operator documentation and shared notes in Python before exposing the builtins |
 
 ## Runtime Behaviour
 

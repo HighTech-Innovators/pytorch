@@ -108,6 +108,7 @@ This file enumerates directories under `./src` and their ADR coverage status.
 
 | Directory | Status | Reason |
 |---|---|---|
+| `adr` | EXCLUDED | Build/config only |
 | `android` | EXCLUDED | Build/config only |
 | `aten` | EXCLUDED | Leaf with no architectural boundary |
 | `aten/src/ATen/benchmarks` | EXCLUDED | Test suite |

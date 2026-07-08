@@ -27,8 +27,8 @@ The main entry point is the CLI `main()` function in `gen_mobile_upgraders.py`. 
 
 | Component | Direction | Nature |
 |---|---|---|
-| [torch/jit](torch/jit/ADR.md) | depends-on | Imports `generate_upgraders_bytecode()` and reads `torch._C._get_operator_version_map()` plus `torch._C._get_upgrader_ranges()` to discover upgrader metadata |
-| [torch/csrc/jit/mobile](torch/csrc/jit/mobile/ADR.md) | depended-on-by | Writes `upgrader_mobile.cpp`, which mobile import and flatbuffer loading code consume through `getUpgraderBytecodeList()` |
+| [torch/csrc/jit](torch/csrc/jit/ADR.md) | depends-on | Imports `generate_upgraders_bytecode()` and reads `torch._C._get_operator_version_map()` plus `torch._C._get_upgrader_ranges()` to discover upgrader metadata |
+| `torch/csrc/jit/mobile` (no ADR — covered by [torch/csrc/jit](torch/csrc/jit/ADR.md)) | depended-on-by | Writes `upgrader_mobile.cpp`, which mobile import and flatbuffer loading code consume through `getUpgraderBytecodeList()` |
 | [torchgen](torchgen/ADR.md) | depends-on | Uses `CodeTemplate` and follows torchgen's deterministic code-emission model |
 
 ## Runtime Behaviour

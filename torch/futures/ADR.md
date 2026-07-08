@@ -27,7 +27,7 @@
 | Component | Direction | Nature |
 |---|---|---|
 | [torch/distributed](torch/distributed/ADR.md) | depended-on-by | RPC and distributed communication hooks use `torch.futures.Future` for asynchronous completion and callback chaining |
-| [torch/csrc](torch/csrc/ADR.md) | depends-on | `Future` subclasses the native `torch._C.Future`, and `collect_all` delegates to `torch._C._collect_all` |
+| [torch/csrc/distributed](torch/csrc/distributed/ADR.md) | depends-on | `Future` subclasses the native `torch._C.Future`, and `collect_all` delegates to `torch._C._collect_all` |
 
 ## Runtime Behaviour
 

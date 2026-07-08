@@ -28,7 +28,7 @@
 | Component | Direction | Nature |
 |---|---|---|
 | [torch/accelerator](torch/accelerator/ADR.md) | depended-on-by | generic accelerator code expects CPU to provide `device_count`, `current_stream`, `Stream`, and `Event` with the same names as accelerator backends |
-| [torch/csrc](torch/csrc/ADR.md) | depends-on | capability queries and thread-name helpers call `torch._C._cpu._get_cpu_capability`, `torch._C._cpu._init_amx`, `torch._C._set_thread_name`, and `torch._C._get_thread_name` |
+| [torch/csrc/dynamo](torch/csrc/dynamo/ADR.md) | depends-on | capability queries and thread-name helpers call `torch._C._cpu._get_cpu_capability`, `torch._C._cpu._init_amx`, `torch._C._set_thread_name`, and `torch._C._get_thread_name` |
 
 ## Runtime Behaviour
 

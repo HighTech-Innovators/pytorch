@@ -30,8 +30,8 @@
 
 | Component | Direction | Nature |
 |---|---|---|
-| [torch/csrc](torch/csrc/ADR.md) | depends-on | exporter and importer use `torch._C.PyTorchFileWriter`, `torch._C.PyTorchFileReader`, and `torch._C.ScriptModuleSerializer` for archive I/O and storage handling |
-| [torch/serialization](torch/serialization/ADR.md) | depends-on | importer uses `_get_restore_location`, `_maybe_decode_ascii`, and deserialization storage helpers while exporter tags storages with serialization metadata |
+| [torch/csrc/jit](torch/csrc/jit/ADR.md) | depends-on | exporter and importer use `torch._C.PyTorchFileWriter`, `torch._C.PyTorchFileReader`, and `torch._C.ScriptModuleSerializer` for archive I/O and storage handling |
+| `torch/serialization.py` (no ADR — single file; serialization format documented in [caffe2/serialize](caffe2/serialize/ADR.md)) | depends-on | importer uses `_get_restore_location`, `_maybe_decode_ascii`, and deserialization storage helpers while exporter tags storages with serialization metadata |
 | [torch/nn](torch/nn/ADR.md) | depended-on-by | model code and modules are common packaged payloads for `PackageExporter` and `PackageImporter` |
 
 ## Runtime Behaviour

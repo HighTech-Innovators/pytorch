@@ -30,7 +30,7 @@
 |---|---|---|
 | [torch/nn](torch/nn/ADR.md) | depends-on | `_internal/ops.py` implements nested overrides for module-style math such as `linear_default` and `linear_backward_default` |
 | [torch/multiprocessing](torch/multiprocessing/ADR.md) | depended-on-by | nested tensors are added to the reducer path through `rebuild_nested_tensor` and `reduce_nested_tensor` |
-| [torch/csrc](torch/csrc/ADR.md) | depends-on | `to_padded_tensor` binds `torch._C._nested.nested_to_padded_tensor`, and `__init__.py` uses internal nested constructors such as `torch._nested_view_from_buffer` |
+| [torch/csrc/autograd](torch/csrc/autograd/ADR.md) | depends-on | `to_padded_tensor` binds `torch._C._nested.nested_to_padded_tensor`, and `__init__.py` uses internal nested constructors such as `torch._nested_view_from_buffer` |
 
 ## Runtime Behaviour
 

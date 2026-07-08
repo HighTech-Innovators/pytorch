@@ -27,7 +27,7 @@
 | Component | Direction | Nature |
 |---|---|---|
 | [aten/src/ATen/native](aten/src/ATen/native/ADR.md) | depends-on | every public symbol in `__init__.py` wraps a corresponding builtin from `torch._C._fft` |
-| [torch/_torch_docs](torch/_torch_docs/ADR.md) | depends-on | the module formats operator docstrings with `common_args` and `factory_common_args` |
+| `torch/_torch_docs.py` (no ADR — single file, not a directory) | depends-on | the module formats operator docstrings with `common_args` and `factory_common_args` |
 
 ## Runtime Behaviour
 

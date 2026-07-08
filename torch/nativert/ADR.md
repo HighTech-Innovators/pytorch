@@ -30,9 +30,9 @@ The public symbols are `ModelRunner`, `run`, `runWithFlatInputsAndOutputs`, `num
 
 | Component | Direction | Nature |
 |---|---|---|
-| [torch/export](torch/export/ADR.md) | depends-on | `ModelRunner.cpp` parses a serialized `torch::_export::ExportedProgram` and reads archive constants from `pt2_archive_constants.h` |
+| [torch/_export](torch/_export/ADR.md) | depends-on | `ModelRunner.cpp` parses a serialized `torch::_export::ExportedProgram` and reads archive constants from `pt2_archive_constants.h` |
 | [torch/compiler](torch/compiler/ADR.md) | depended-on-by | the runtime executes delegated compiled graphs, including AOTInductor-lowered modules wrapped by `LoweredBackendModule` |
-| [torch/csrc](torch/csrc/ADR.md) | depends-on | Python bindings convert Python objects with `torch::jit::toIValue` and return values with `torch::jit::createPyObjectForStack` |
+| [torch/csrc/api](torch/csrc/api/ADR.md) | depends-on | Python bindings convert Python objects with `torch::jit::toIValue` and return values with `torch::jit::createPyObjectForStack` |
 
 ## Runtime Behaviour
 
