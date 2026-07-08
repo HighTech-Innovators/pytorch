@@ -11,6 +11,7 @@
 #include <ATen/native/transformers/attention.h>
 #include <ATen/native/transformers/sdp_utils_cpp.h>
 #include <c10/util/irange.h>
+#include <memory>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -341,6 +342,215 @@ inline void pad_remain_row_col_zero(
 
 }
 
+
+// Fast path for single-query attention (autoregressive decode: seq_len_q=1).
+// Avoids at::empty allocations and parallel_for overhead by using a
+// stack-allocated buffer and a serial loop over batch*heads.
+template <typename scalar_t, typename mask_t>
+void cpu_flash_attention_single_query(
+    const Tensor& output,
+    const Tensor& logsumexp,
+    const at::Tensor& q,
+    const at::Tensor& k,
+    const at::Tensor& v,
+    double dropout_p,
+    bool is_causal,
+    std::optional<Tensor> attn_mask,
+    std::optional<double> scale) {
+  constexpr bool is_reduced_type = is_reduced_floating_point_v<scalar_t>;
+  using accum_t = at::opmath_type<scalar_t>;
+  using Vec = vec::Vectorized<accum_t>;
+  accum_t scaling_factor =
+      sdp::calculate_scale(q, scale).expect_float();
+
+  // Input layout: (Batch x Num_heads x 1 x Dim_per_head)
+  // For qSize==1, transpose(1,2) gives (Batch x 1 x Num_heads x Dim_per_head)
+  const at::Tensor query = q.stride(-1) == 1 ? q.transpose(1, 2) : q.transpose(1, 2).contiguous();
+  const at::Tensor key = k.stride(-1) == 1 ? k.transpose(1, 2) : k.transpose(1, 2).contiguous();
+  const at::Tensor value = v.stride(-1) == 1 ? v.transpose(1, 2) : v.transpose(1, 2).contiguous();
+
+  int64_t batchSize = query.size(0);
+  int64_t kvSize = value.size(1);
+  int64_t num_head = query.size(2);
+  int64_t kv_num_head = key.size(2);
+  int64_t repeat_factor = num_head / kv_num_head;
+  int64_t headSize = query.size(3);
+
+  bool has_attn_mask = attn_mask.has_value() && attn_mask.value().numel();
+  if (has_attn_mask) {
+    reshape_attn_mask_to_4d(attn_mask.value(), batchSize, num_head, 1, kvSize);
+  }
+
+  int64_t qStrideB = query.stride(0);
+  int64_t qStrideM = query.stride(1);
+  int64_t qStrideH = query.stride(2);
+  int64_t kStrideB = key.stride(0);
+  int64_t kStrideN = key.stride(1);
+  int64_t kStrideH = key.stride(2);
+  int64_t vStrideB = value.stride(0);
+  int64_t vStrideN = value.stride(1);
+  int64_t vStrideH = value.stride(2);
+  int64_t oStrideB = output.stride(0);
+  int64_t oStrideM = output.stride(1);
+  int64_t oStrideH = output.stride(2);
+  int64_t lStrideB = logsumexp.stride(0);
+  int64_t lStrideM = logsumexp.stride(1);
+  int64_t lStrideH = logsumexp.stride(2);
+  int64_t mStrideB =
+      (has_attn_mask && attn_mask.value().size(0) > 1)
+      ? attn_mask.value().stride(0) : 0;
+  int64_t mStrideH =
+      (has_attn_mask && attn_mask.value().size(1) > 1)
+      ? attn_mask.value().stride(1) : 0;
+  int64_t mStrideM =
+      (has_attn_mask && attn_mask.value().size(2) > 1)
+      ? attn_mask.value().stride(2) : 0;
+  int64_t mStrideN =
+      (has_attn_mask && attn_mask.value().size(3) > 1)
+      ? attn_mask.value().stride(3) : 0;
+
+  const scalar_t* q_data = query.const_data_ptr<scalar_t>();
+  const scalar_t* k_data = key.const_data_ptr<scalar_t>();
+  const scalar_t* v_data = value.const_data_ptr<scalar_t>();
+  mask_t* mask_data = has_attn_mask
+      ? attn_mask.value().data_ptr<mask_t>() : nullptr;
+  scalar_t* out_data = output.data_ptr<scalar_t>();
+  accum_t* lse_data = logsumexp.data_ptr<accum_t>();
+
+  // Stack buffer: qk scores (kvSize) + dst accumulator (headSize)
+  // + optional qk_reduced for reduced types (kvSize).
+  // For typical autoregressive decode: kvSize<=512, headSize<=128 → <2.5KB.
+  constexpr int64_t kStackBufLimit = 1024;
+  const int64_t buf_size = kvSize + headSize;
+  std::unique_ptr<accum_t[]> heap_buf;
+  accum_t stack_buf[kStackBufLimit];
+  accum_t* buf_ptr = (buf_size <= kStackBufLimit) ? stack_buf : nullptr;
+  if (!buf_ptr) {
+    heap_buf.reset(new accum_t[buf_size]);
+    buf_ptr = heap_buf.get();
+  }
+
+  // For reduced types, we need a scalar_t buffer for qk after softmax
+  constexpr int64_t kStackReducedLimit = 512;
+  [[maybe_unused]] std::unique_ptr<scalar_t[]> heap_reduced_buf;
+  [[maybe_unused]] scalar_t stack_reduced_buf[is_reduced_type ? kStackReducedLimit : 1];
+  scalar_t* qk_reduced_data = nullptr;
+  if constexpr (is_reduced_type) {
+    if (kvSize <= kStackReducedLimit) {
+      qk_reduced_data = stack_reduced_buf;
+    } else {
+      heap_reduced_buf.reset(new scalar_t[kvSize]);
+      qk_reduced_data = heap_reduced_buf.get();
+    }
+  }
+
+  accum_t* qk_data = buf_ptr;
+  accum_t* dst_data = buf_ptr + kvSize;
+
+  for (int64_t i = 0; i < batchSize; ++i) {
+    for (int64_t j = 0; j < num_head; ++j) {
+      int64_t kv_j = j / repeat_factor;
+
+      // q @ k.T: result is [1 x kvSize]
+      cpublas::gemm(
+        TransposeType::Transpose,
+        TransposeType::NoTranspose,
+        kvSize,
+        /*qBlockSize=*/1,
+        headSize,
+        static_cast<accum_t>(1),
+        k_data + i * kStrideB + kv_j * kStrideH,
+        kStrideN,
+        q_data + i * qStrideB + j * qStrideH,
+        qStrideM,
+        static_cast<accum_t>(0),
+        qk_data,
+        kvSize);
+
+      // Apply causal mask
+      if (is_causal) {
+        // For qSize==1, m=0 so last_col = 0 - 0 = 0; fill from col 1 onward
+        fill_stub(qk_data + 1,
+            -std::numeric_limits<accum_t>::infinity(), kvSize - 1);
+      }
+
+      // Apply attention mask and scaling, or just scaling, then find max
+      accum_t qk_max = -std::numeric_limits<accum_t>::infinity();
+      if (has_attn_mask) {
+#if __GNUC__ == 11 && defined(__ARM_FEATURE_SVE)
+        _scale_attn_mask_fusion_kernel(
+          qk_data,
+          mask_data + i * mStrideB + j * mStrideH,
+          kvSize,
+          qk_data,
+          scaling_factor,
+          mStrideN == 0);
+#else
+        if (mStrideN == 0) {
+          _scale_attn_mask_fusion_kernel<true>(
+            qk_data,
+            mask_data + i * mStrideB + j * mStrideH,
+            kvSize, qk_data, scaling_factor);
+        } else {
+          _scale_attn_mask_fusion_kernel<false>(
+            qk_data,
+            mask_data + i * mStrideB + j * mStrideH,
+            kvSize, qk_data, scaling_factor);
+        }
+#endif
+        qk_max = at::vec::reduce_all<accum_t>(
+            [](Vec& x, Vec& y) { return at::vec::maximum(x, y); },
+            qk_data, kvSize);
+      } else {
+        _mul_reduce_max_fusion_kernel(qk_data, scaling_factor, kvSize, qk_data, qk_max);
+      }
+
+      accum_t qk_sum;
+      if (qk_max == -std::numeric_limits<accum_t>::infinity()) {
+        // Fully masked row
+        if constexpr (is_reduced_type) {
+          fill_stub(qk_reduced_data, static_cast<scalar_t>(0), kvSize);
+        } else {
+          fill_stub(qk_data, static_cast<accum_t>(0), kvSize);
+        }
+        qk_sum = 1;
+        qk_max = 0;
+      } else {
+        qk_sum = qk_max;
+        // exp(qk - max) → output, and sum
+        _exp_reduce_sum_fusion_kernel(qk_data, kvSize,
+            conditional_data_ptr(qk_data, qk_reduced_data), qk_sum);
+      }
+
+      // Compute softmax(qk) @ v → dst [1 x headSize]
+      cpublas::gemm(
+        TransposeType::NoTranspose,
+        TransposeType::NoTranspose,
+        headSize,
+        /*qBlockSize=*/1,
+        kvSize,
+        static_cast<accum_t>(1),
+        v_data + i * vStrideB + kv_j * vStrideH,
+        vStrideN,
+        conditional_data_ptr(qk_data, qk_reduced_data),
+        kvSize,
+        static_cast<accum_t>(0),
+        dst_data,
+        headSize);
+
+      // dst /= sum and write to output
+      accum_t sum_reciprocal = 1 / qk_sum;
+      vec::map<scalar_t>(
+        [sum_reciprocal](Vec x) { return x * Vec(sum_reciprocal); },
+        out_data + i * oStrideB + j * oStrideH,
+        dst_data,
+        headSize);
+
+      // Store logsumexp
+      lse_data[i * lStrideB + j * lStrideH] = qk_max + std::log(qk_sum);
+    }
+  }
+}
 
 template <typename scalar_t, typename mask_t, int64_t q_split_size, int64_t kv_split_size, bool with_pack=false>
 void cpu_flash_attention(
@@ -1171,6 +1381,21 @@ void flash_attention_kernel_impl(
                      (query.scalar_type() == kBFloat16 && cpublas::could_pack(kBFloat16)));
 
   AT_DISPATCH_FLOATING_TYPES_AND2(kBFloat16, kHalf, query.scalar_type(), "flash_attention", [&] {
+    // Single-query fast path: avoids per-call at::empty and parallel_for overhead
+    if (q_seq_len == 1) {
+      if (!attn_mask.has_value()) {
+        cpu_flash_attention_single_query<scalar_t, scalar_t>(
+          output, logsumexp, query, key, value,
+          dropout_p, is_causal, attn_mask, scale);
+      } else {
+        AT_DISPATCH_MASK_TYPES(attn_mask.value().scalar_type(), "flash_attention_mask", [&]() {
+          cpu_flash_attention_single_query<scalar_t, mask_t>(
+            output, logsumexp, query, key, value,
+            dropout_p, is_causal, attn_mask, scale);
+        });
+      }
+      return;
+    }
     if (!attn_mask.has_value()) {
       if (q_seq_len >= 768) {
         FLASH_ATTENTION_KERNEL(cpu_flash_attention, could_pack, scalar_t, scalar_t, 256, 512,
