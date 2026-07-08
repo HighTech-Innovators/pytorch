@@ -40,7 +40,7 @@
 | Component | Direction | Nature |
 |---|---|---|
 | [c10/util](c10/util/ADR.md) | depends-on | `intrusive_ptr`, `ArrayRef`, `Exception`, `SmallVector`, type-list utilities |
-| [c10/macros](c10/macros/ADR.md) | depends-on | Export macros and platform feature flags |
+| `c10/macros` (no ADR — excluded) | depends-on | Export macros and platform feature flags (`C10_API`, `C10_EXPORT`); EXCLUDED from ADR coverage |
 | [aten/src/ATen/core](aten/src/ATen/core/ADR.md) | depended-on-by | Dispatcher routes on `DispatchKeySet` computed from `TensorImpl` |
 | [torch/csrc/autograd](torch/csrc/autograd/ADR.md) | depended-on-by | Autograd reads/sets Autograd dispatch keys and view metadata |
 
