@@ -268,6 +268,23 @@ static Tensor & copy_impl(Tensor & self, const Tensor & src, bool non_blocking) 
     return self;
   }
 
+  // Fast path: same-dtype, both CPU, both contiguous, non-overlapping, no
+  // conjugate/negation view bits. Directly memcpy to avoid TensorIterator
+  // construction overhead which dominates for small tensors (35638 calls).
+  if (self.device().is_cpu() && src.device().is_cpu() &&
+      self.scalar_type() == src.scalar_type() &&
+      self.is_contiguous() && src.is_contiguous() &&
+      self.sizes().equals(src.sizes()) &&
+      !self.is_neg() && !src.is_neg() &&
+      !self.is_conj() && !src.is_conj() &&
+      !self.is_alias_of(src)) {
+    const auto numel = self.numel();
+    if (numel > 0) {
+      std::memcpy(self.data_ptr(), src.const_data_ptr(),
+                  static_cast<size_t>(numel) * self.element_size());
+    }
+    return self;
+  }
 
   auto iter = TensorIteratorConfig()
     .add_output(self)
