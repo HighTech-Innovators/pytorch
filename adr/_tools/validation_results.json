@@ -1,0 +1,449 @@
+{
+  "check1": {
+    "status": "PASS",
+    "missing_dirs": [],
+    "pending": []
+  },
+  "check2": {
+    "status": "PASS",
+    "missing_adrs": [],
+    "orphan_adrs": [],
+    "wrong_depth": [],
+    "count_actual": 94,
+    "count_covered": 94
+  },
+  "check3": {
+    "status": "PASS",
+    "invalid": [],
+    "line_violations": []
+  },
+  "check4": {
+    "status": "PASS",
+    "stub_issues": [],
+    "rel_path_violations": [],
+    "broken_links": []
+  },
+  "check5": {
+    "status": "PASS",
+    "fails": [],
+    "results": [
+      [
+        "aten/src/ATen/core",
+        "COVERED"
+      ],
+      [
+        "aten/src/ATen/core/dispatch",
+        "covered via ancestor"
+      ],
+      [
+        "aten/src/ATen/cpu/vec",
+        "COVERED"
+      ],
+      [
+        "aten/src/ATen/native",
+        "COVERED"
+      ],
+      [
+        "aten/src/ATen/native/cpu",
+        "COVERED"
+      ],
+      [
+        "aten/src/ATen/native/cuda",
+        "COVERED"
+      ],
+      [
+        "aten/src/ATen/native/quantized",
+        "COVERED"
+      ],
+      [
+        "aten/src/ATen/native/sparse",
+        "COVERED"
+      ],
+      [
+        "benchmarks",
+        "COVERED"
+      ],
+      [
+        "c10/core",
+        "COVERED"
+      ],
+      [
+        "c10/cuda",
+        "COVERED"
+      ],
+      [
+        "c10/mobile",
+        "COVERED"
+      ],
+      [
+        "c10/util",
+        "COVERED"
+      ],
+      [
+        "c10::CPUAllocator",
+        "not found in src (may be renamed/merged)"
+      ],
+      [
+        "c10::Error",
+        "not found in src (may be renamed/merged)"
+      ],
+      [
+        "c10::IndexError",
+        "not found in src (may be renamed/merged)"
+      ],
+      [
+        "c10::TensorImpl",
+        "not found in src (may be renamed/merged)"
+      ],
+      [
+        "c10::ValueError",
+        "not found in src (may be renamed/merged)"
+      ],
+      [
+        "c10::cuda::CUDACachingAllocator",
+        "not found in src (may be renamed/merged)"
+      ],
+      [
+        "c10::intrusive_ptr",
+        "not found in src (may be renamed/merged)"
+      ],
+      [
+        "c10::intrusive_ptr<StorageImpl>",
+        "not found in src (may be renamed/merged)"
+      ],
+      [
+        "c10::intrusive_ptr<TensorImpl>",
+        "not found in src (may be renamed/merged)"
+      ],
+      [
+        "caffe2",
+        "COVERED"
+      ],
+      [
+        "caffe2/core",
+        "COVERED"
+      ],
+      [
+        "cmake",
+        "COVERED"
+      ],
+      [
+        "docs",
+        "COVERED"
+      ],
+      [
+        "functorch",
+        "COVERED"
+      ],
+      [
+        "test",
+        "COVERED"
+      ],
+      [
+        "third_party",
+        "COVERED"
+      ],
+      [
+        "tools",
+        "COVERED"
+      ],
+      [
+        "tools/autograd",
+        "COVERED"
+      ],
+      [
+        "torch",
+        "COVERED"
+      ],
+      [
+        "torch/_decomp",
+        "COVERED"
+      ],
+      [
+        "torch/_dynamo",
+        "COVERED"
+      ],
+      [
+        "torch/_dynamo/variables",
+        "covered via ancestor"
+      ],
+      [
+        "torch/_export",
+        "COVERED"
+      ],
+      [
+        "torch/_functorch",
+        "COVERED"
+      ],
+      [
+        "torch/_functorch/_aot_autograd",
+        "covered via ancestor"
+      ],
+      [
+        "torch/_inductor",
+        "COVERED"
+      ],
+      [
+        "torch/_inductor/codegen",
+        "COVERED"
+      ],
+      [
+        "torch/_inductor/fx_passes",
+        "covered via ancestor"
+      ],
+      [
+        "torch/amp",
+        "COVERED"
+      ],
+      [
+        "torch/autograd",
+        "COVERED"
+      ],
+      [
+        "torch/csrc",
+        "covered via ancestor"
+      ],
+      [
+        "torch/csrc/api",
+        "COVERED"
+      ],
+      [
+        "torch/csrc/autograd",
+        "COVERED"
+      ],
+      [
+        "torch/csrc/autograd/generated",
+        "covered via ancestor"
+      ],
+      [
+        "torch/csrc/distributed",
+        "COVERED"
+      ],
+      [
+        "torch/csrc/dynamo",
+        "COVERED"
+      ],
+      [
+        "torch/csrc/inductor",
+        "COVERED"
+      ],
+      [
+        "torch/csrc/jit",
+        "COVERED"
+      ],
+      [
+        "torch/csrc/profiler",
+        "COVERED"
+      ],
+      [
+        "torch/cuda",
+        "COVERED"
+      ],
+      [
+        "torch/distributed",
+        "COVERED"
+      ],
+      [
+        "torch/fx",
+        "COVERED"
+      ],
+      [
+        "torch/fx/passes",
+        "covered via ancestor"
+      ],
+      [
+        "torch/nn",
+        "COVERED"
+      ],
+      [
+        "torch/nn/modules",
+        "COVERED"
+      ],
+      [
+        "torch/onnx",
+        "COVERED"
+      ],
+      [
+        "torch/optim",
+        "COVERED"
+      ],
+      [
+        "torch/profiler",
+        "COVERED"
+      ],
+      [
+        "torch/utils",
+        "COVERED"
+      ],
+      [
+        "torch/utils/benchmark",
+        "covered via ancestor"
+      ],
+      [
+        "torchgen",
+        "COVERED"
+      ]
+    ]
+  },
+  "overall": "PASS",
+  "issues": [],
+  "covered": {
+    "aten/src/ATen/core": "Dispatch infrastructure: Dispatcher, OperatorEntry, boxing |",
+    "aten/src/ATen/cpu/vec": "SIMD vectorization abstraction layer |",
+    "aten/src/ATen/native": "Operator implementations (CPU, CUDA, Sparse) |",
+    "aten/src/ATen/native/cpu": "Vectorized CPU kernels |",
+    "aten/src/ATen/native/cuda": "CUDA kernel implementations |",
+    "aten/src/ATen/native/quantized": "Quantization kernels |",
+    "aten/src/ATen/native/sparse": "Sparse tensor operations |",
+    "benchmarks": "Performance benchmarks (operator-level and model-level) |",
+    "c10/core": "Core tensor primitives: TensorImpl, Storage, DispatchKey, Scalar |",
+    "c10/cuda": "CUDA device abstractions, CachingAllocator |",
+    "c10/metal": "Apple Metal (GPU) device support at c10 level |",
+    "c10/mobile": "Mobile-optimized allocators and runtime |",
+    "c10/util": "Utility library: intrusive_ptr, ArrayRef, Exception |",
+    "c10/xpu": "Intel XPU device support at c10 level |",
+    "caffe2": "Legacy Caffe2 runtime top-level package |",
+    "caffe2/core": "Legacy Caffe2 runtime (partially shared with PyTorch) |",
+    "caffe2/perfkernels": "Caffe2 performance-optimized compute kernels |",
+    "caffe2/serialize": "Caffe2 model serialization (zip-based format) |",
+    "caffe2/utils": "Caffe2 utility library (math, proto helpers) |",
+    "cmake": "CMake build modules and configuration helpers |",
+    "docs": "Documentation source (Sphinx-based) |",
+    "functorch": "Functional transforms top-level package |",
+    "functorch/_src": "functorch compatibility shim to torch/_functorch |",
+    "functorch/compile": "functorch compile API (AOTAutograd entrypoints) |",
+    "functorch/dim": "Named/indexed dimension extension for tensors |",
+    "functorch/einops": "Einops-style tensor rearrangement |",
+    "test": "Test suite (common utilities and runner infrastructure) |",
+    "third_party": "External git submodule dependencies |",
+    "tools": "Build scripts, code-gen drivers, autograd derivative tooling |",
+    "tools/autograd": "Autograd code generation, derivatives.yaml |",
+    "tools/code_analyzer": "Operator dependency / selective-build analysis |",
+    "tools/jit": "JIT code generation helpers |",
+    "tools/stats": "CI/test statistics collection and reporting |",
+    "torch": "Python package top-level: public API surface and init |",
+    "torch/_custom_op": "Custom operator registration and schema utilities |",
+    "torch/_decomp": "Decomposition registry: operator lowering to primitive ops |",
+    "torch/_dispatch": "Python-level dispatch utilities and overrides |",
+    "torch/_dynamo": "TorchDynamo compiler frontend |",
+    "torch/_export": "Model export infrastructure |",
+    "torch/_functorch": "Functional transforms: vmap, grad, AOTAutograd |",
+    "torch/_higher_order_ops": "Higher-order operators (cond, while_loop, scan) |",
+    "torch/_inductor": "TorchInductor compiler backend |",
+    "torch/_inductor/codegen": "Kernel code generation (Triton, C++) |",
+    "torch/_lazy": "Lazy tensor execution backend |",
+    "torch/_library": "Library/custom op registration infrastructure |",
+    "torch/_logging": "Structured logging for compiler diagnostics |",
+    "torch/_native": "Python-level native operator implementations |",
+    "torch/_numpy": "NumPy compatibility layer |",
+    "torch/_prims": "Primitive operators for decomposition |",
+    "torch/_prims_common": "Shared utilities for _prims and _refs |",
+    "torch/_refs": "Reference implementations of PyTorch ops in Python |",
+    "torch/_strobelight": "Strobelight profiler integration |",
+    "torch/_subclasses": "Tensor subclass dispatch system (FakeTensor, etc.) |",
+    "torch/accelerator": "Device-agnostic accelerator abstraction |",
+    "torch/amp": "Automatic mixed precision |",
+    "torch/autograd": "Python autograd API: Function, grad_mode, gradcheck |",
+    "torch/compiler": "User-facing torch.compile API |",
+    "torch/cpu": "CPU-specific device APIs |",
+    "torch/csrc/api": "C++ frontend API (libtorch) |",
+    "torch/csrc/autograd": "Autograd engine, Node, GraphTask, backward execution |",
+    "torch/csrc/distributed": "Distributed communication backends |",
+    "torch/csrc/dynamo": "C++ support for Dynamo frame evaluation |",
+    "torch/csrc/inductor": "C++ support for Inductor-generated code |",
+    "torch/csrc/jit": "TorchScript JIT compiler (legacy) |",
+    "torch/csrc/profiler": "Kineto profiler integration |",
+    "torch/cuda": "CUDA device management, streams, events |",
+    "torch/distributed": "Distributed training: DDP, FSDP, RPC |",
+    "torch/distributions": "Probability distributions for probabilistic programming |",
+    "torch/fft": "Fast Fourier Transform operations |",
+    "torch/func": "Functional transforms public API (vmap, grad) |",
+    "torch/futures": "Async future/promise for distributed ops |",
+    "torch/fx": "FX graph intermediate representation |",
+    "torch/linalg": "Linear algebra operations |",
+    "torch/masked": "Masked tensor operations |",
+    "torch/multiprocessing": "Multi-process support (CUDA-aware fork, shared memory) |",
+    "torch/nativert": "Native runtime for exported models |",
+    "torch/nested": "Nested (ragged/variable-length) tensor support |",
+    "torch/nn": "Neural network modules, layers, loss functions |",
+    "torch/nn/modules": "Module implementations: Linear, Conv, RNN, Transformer |",
+    "torch/numa": "NUMA-aware memory allocation |",
+    "torch/onnx": "ONNX export: dynamo and TorchScript paths |",
+    "torch/optim": "Optimizers: SGD, Adam, AdamW |",
+    "torch/package": "Model packaging for hermetic deployment |",
+    "torch/profiler": "Profiler API and Kineto integration |",
+    "torch/quantization": "Legacy quantization API (deprecated) |",
+    "torch/sparse": "Sparse tensor operations (COO, CSR, BSR formats) |",
+    "torch/special": "Special mathematical functions |",
+    "torch/utils": "Utilities: data loading, checkpointing, benchmarking |",
+    "torch/xpu": "Intel XPU (GPU) device support |",
+    "torchgen": "Code generation from native_functions.yaml |",
+    "torchgen/_autoheuristic": "Auto-heuristic selection for code generation |",
+    "torchgen/api": "Code-gen type/signature models |",
+    "torchgen/dest": "Code-gen destinations (kernel/registration emitters) |",
+    "torchgen/operator_versions": "Operator versioning for backwards-compatibility |"
+  },
+  "excluded": {
+    "adr": "Build/config only",
+    "android": "Build/config only",
+    "aten": "Leaf with no architectural boundary",
+    "aten/src/ATen/benchmarks": "Test suite",
+    "aten/src/ATen/templates": "Auto-generated code",
+    "aten/src/ATen/test": "Test suite",
+    "aten/tools": "Build/config only",
+    "binaries": "Build/config only",
+    "c10": "Leaf with no architectural boundary",
+    "c10/benchmark": "Test suite",
+    "c10/hip": "Build/config only",
+    "c10/macros": "Auto-generated code",
+    "c10/test": "Test suite",
+    "functorch/benchmarks": "Test suite",
+    "functorch/docs": "Build/config only",
+    "functorch/examples": "Build/config only",
+    "functorch/experimental": "Build/config only",
+    "functorch/op_analysis": "Build/config only",
+    "mypy_plugins": "Build/config only",
+    "scripts": "Build/config only",
+    "tools/alerts": "Build/config only",
+    "tools/amd_build": "Build/config only",
+    "tools/build_defs": "Build/config only",
+    "tools/code_coverage": "Build/config only",
+    "tools/coverage_plugins_package": "Build/config only",
+    "tools/dynamo": "Build/config only",
+    "tools/experimental": "Build/config only",
+    "tools/gdb": "Build/config only",
+    "tools/github": "Build/config only",
+    "tools/iwyu": "Build/config only",
+    "tools/linter": "Build/config only",
+    "tools/lite_interpreter": "Build/config only",
+    "tools/lldb": "Build/config only",
+    "tools/packaging": "Build/config only",
+    "tools/pyi": "Auto-generated code",
+    "tools/setup_helpers": "Build/config only",
+    "tools/shared": "Build/config only",
+    "tools/test": "Test suite",
+    "tools/testing": "Test suite",
+    "tools/vendoring": "Vendored/third-party",
+    "torch/_awaits": "Leaf with no architectural boundary",
+    "torch/_C": "Empty or stub",
+    "torch/_C_flatbuffer": "Empty or stub",
+    "torch/_vendor": "Vendored/third-party",
+    "torch/ao": "Leaf with no architectural boundary",
+    "torch/backends": "Leaf with no architectural boundary",
+    "torch/contrib": "Leaf with no architectural boundary",
+    "torch/headeronly": "Leaf with no architectural boundary",
+    "torch/legacy": "Leaf with no architectural boundary",
+    "torch/lib": "Vendored/third-party",
+    "torch/monitor": "Leaf with no architectural boundary",
+    "torch/mps": "Build/config only",
+    "torch/mtia": "Build/config only",
+    "torch/signal": "Leaf with no architectural boundary",
+    "torch/testing": "Test suite",
+    "torchgen/aoti": "Auto-generated code",
+    "torchgen/decompositions": "Auto-generated code",
+    "torchgen/fuse": "Auto-generated code",
+    "torchgen/selective_build": "Build/config only",
+    "torchgen/shape_functions": "Auto-generated code",
+    "torchgen/static_runtime": "Auto-generated code"
+  }
+}
