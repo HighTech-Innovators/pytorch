@@ -671,6 +671,51 @@ static void fastCatOutDim0(
   TORCH_CHECK(outBytes == totalBytes);
 }
 
+// Fast memcpy-based cat for dim>0 when all inputs and result are contiguous
+// and same dtype. For contiguous layout, data along dim>0 is interleaved with
+// the outer dimensions, so we iterate over outer slices and memcpy each input's
+// inner chunk (dim_size * inner_size elements) into the result.
+static void fastCatOutDimN(
+    const Tensor& out,
+    const MaterializedITensorListRef& inputs,
+    int64_t dim) {
+  const auto elem_size = out.element_size();
+  const auto& out_sizes = out.sizes();
+
+  // outer_size = product of dims before cat dim
+  int64_t outer_size = 1;
+  for (int64_t i = 0; i < dim; ++i) {
+    outer_size *= out_sizes[i];
+  }
+
+  // inner_size = product of dims after cat dim
+  int64_t inner_size = 1;
+  for (int64_t i = dim + 1; i < out.dim(); ++i) {
+    inner_size *= out_sizes[i];
+  }
+
+  // Total cat dim in output = sum of input cat dims
+  const int64_t out_cat_stride = out_sizes[dim] * inner_size * elem_size;
+
+  char* out_ptr = reinterpret_cast<char*>(out.data_ptr());
+
+  for (int64_t outer = 0; outer < outer_size; ++outer) {
+    char* dst = out_ptr + outer * out_cat_stride;
+    for (const Tensor& input : inputs) {
+      if (input.numel() == 0) {
+        continue;
+      }
+      const int64_t input_cat_size = input.sizes()[dim];
+      const int64_t chunk_bytes = input_cat_size * inner_size * elem_size;
+      const int64_t input_outer_stride = input_cat_size * inner_size * elem_size;
+      const char* src = reinterpret_cast<const char*>(input.const_data_ptr()) +
+          outer * input_outer_stride;
+      std::memcpy(dst, src, chunk_bytes);
+      dst += chunk_bytes;
+    }
+  }
+}
+
 TORCH_IMPL_FUNC(cat_out_cpu)
 (const ITensorListRef& tensors,
  int64_t dim,
@@ -691,15 +736,15 @@ TORCH_IMPL_FUNC(cat_out_cpu)
   ScalarType dtype = materialized[valid].get().scalar_type();
   bool serial_dtype = at::isFloatingType(dtype);
   // fast path for single thread when both inputs and result are contiguous and
-  // not empty, and concat dim is 0
+  // not empty
   if (use_serial_kernel && all_contiguous && all_same_dtype &&
       (MemoryFormat::Contiguous == memory_format)) {
     if (dim == 0) {
       fastCatOutDim0(result, materialized);
       return;
     }
-    // TODO: Add fast cat for higher dimensions and support multi-threaded fast
-    // cat
+    fastCatOutDimN(result, materialized, dim);
+    return;
   }
 
   // fast path for single thread when both inputs and result are contiguous and
