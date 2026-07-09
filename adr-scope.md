@@ -7,9 +7,9 @@
 | ./benchmarks | yes | EXCLUDED | Test suite — benchmark harness code |
 | ./binaries | yes | EXCLUDED | Build/config only — compiled binary entry points |
 | ./c10 | yes | COVERED | Core C++ library; depth-2 units covered below |
-| ./caffe2 | yes | EXCLUDED | Legacy — historical Caffe2 framework; superseded by PyTorch runtime |
+| ./caffe2 | yes | EXCLUDED | Vendored/third-party — bundled legacy Caffe2 runtime; not owned architecture |
 | ./cmake | no | EXCLUDED | Build/config only — CMake configuration modules |
-| ./docs | yes | EXCLUDED | Documentation sources only |
+| ./docs | yes | EXCLUDED | Build/config only — documentation build infrastructure; no architectural logic |
 | ./functorch | yes | COVERED | Functional transforms bridge package |
 | ./mypy_plugins | yes | EXCLUDED | Build/config only — mypy type-checking plugin |
 | ./scripts | yes | EXCLUDED | Build/config only — CI and developer scripts |
@@ -38,7 +38,7 @@
 | ./torch/backends | yes | EXCLUDED | Leaf with no architectural boundary — backend configuration flags |
 | ./torch/_C | no | EXCLUDED | Build/config only — compiled extension stub; implementation is in torch/csrc |
 | ./torch/compiler | yes | EXCLUDED | Leaf with no architectural boundary — public torch.compile API shim |
-| ./torch/contrib | yes | EXCLUDED | Legacy — experimental/contributed code |
+| ./torch/contrib | yes | EXCLUDED | Leaf with no architectural boundary — 152-line experimental contrib module with no independent architectural role |
 | ./torch/cpu | yes | EXCLUDED | Leaf with no architectural boundary — CPU thread management shim |
 | ./torch/csrc | yes | COVERED | C++ binding bridge — pybind11 bindings, autograd C++ engine |
 | ./torch/cuda | yes | EXCLUDED | Leaf with no architectural boundary — Python CUDA device API; covered by c10/cuda ADR |
