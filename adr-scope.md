@@ -7,7 +7,8 @@
 | `benchmarks` | yes (Python) | EXCLUDED | Build/config only |
 | `binaries` | yes (`.cc`) | EXCLUDED | Build/config only |
 | `c10` | yes (C++) | COVERED | Parent ADR + `c10/core`, `c10/util`, `c10/cuda` |
-| `caffe2` | yes (C++/Python) | EXCLUDED | Leaf with no architectural boundary |
+| `adr` | yes (Python tooling) | EXCLUDED | Build/config only |
+| `caffe2` | yes (C++) | COVERED | Legacy Caffe2 serialization container, SIMD embedding kernels, and shared utilities |
 | `cmake` | no (build config) | EXCLUDED | Build/config only |
 | `docs` | minimal | EXCLUDED | Build/config only |
 | `functorch` | yes (Python/C++) | COVERED | Function-transform compatibility shim ADR |
