@@ -16,6 +16,7 @@
 #include <ATen/metal/Context.h>
 #include <ATen/Parallel.h>
 #include <c10/util/irange.h>
+#include <cstring>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -268,6 +269,24 @@ static Tensor & copy_impl(Tensor & self, const Tensor & src, bool non_blocking) 
     return self;
   }
 
+  // Fast path: both contiguous, same dtype, same device (CPU), same sizes,
+  // no conjugation/negation, not aliases (alias tensors may partially overlap
+  // and must fall through to TensorIterator for the overlap error) — bypass
+  // TensorIterator and memcpy directly.
+  if (self.is_contiguous() && src.is_contiguous() &&
+      self.scalar_type() == src.scalar_type() &&
+      self.device().is_cpu() && src.device().is_cpu() &&
+      self.sizes().equals(src.sizes()) &&
+      !self.is_neg() && !src.is_neg() &&
+      !self.is_conj() && !src.is_conj() &&
+      !self.is_quantized() && !src.is_quantized() &&
+      self.numel() > 0 &&
+      !isBitsType(self.scalar_type()) &&
+      !self.is_alias_of(src)) {
+    const auto nbytes = static_cast<size_t>(self.numel()) * self.element_size();
+    std::memcpy(self.data_ptr(), src.const_data_ptr(), nbytes);
+    return self;
+  }
 
   auto iter = TensorIteratorConfig()
     .add_output(self)
