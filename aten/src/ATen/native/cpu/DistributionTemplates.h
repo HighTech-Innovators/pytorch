@@ -331,15 +331,35 @@ struct GeometricKernel {
 
 // ================================================== Exponential =====================================================
 
+template <typename scalar_t, typename RNG>
+void exponential_fill(scalar_t* data, int64_t size, double lambda, RNG generator) {
+  // Direct scalar loop over contiguous data bypasses TensorIterator construction
+  // and per-element lambda dispatch overhead. Uses std::log1p(-u), the same
+  // transform as transformation::exponential<T> on CPU, for bit-exact output.
+  at::uniform_real_distribution<double> uniform(0, 1);
+  const double neg_inv_lambda = -1.0 / lambda;
+  for (int64_t i = 0; i < size; i++) {
+    double u = uniform(generator);
+    data[i] = static_cast<scalar_t>(neg_inv_lambda * std::log1p(-u));
+  }
+}
+
 template<typename RNG>
 void exponential_kernel(TensorIteratorBase& iter, double lambda, RNG generator) {
   TORCH_CHECK(isFloatingType(iter.dtype()), "Exponential distribution is a continuous probability distribution. dtype must be a floating point but you specified ", iter.dtype());
   AT_DISPATCH_FLOATING_TYPES_AND2(at::ScalarType::Half, at::ScalarType::BFloat16, iter.dtype(), "exponential_cpu", [&]() {
-    std::lock_guard<std::mutex> lock(generator->mutex_);
-    at::exponential_distribution<double> exponential(lambda);
-    cpu_serial_kernel(iter, [&exponential, generator]() -> scalar_t {
-      return static_cast<scalar_t>(exponential(generator));
-    });
+    auto size = iter.numel();
+    if (size >= 16 && iter.tensor(0).is_contiguous()) {
+      std::lock_guard<std::mutex> lock(generator->mutex_);
+      scalar_t* data = iter.tensor(0).template data_ptr<scalar_t>();
+      exponential_fill<scalar_t>(data, size, lambda, generator);
+    } else {
+      std::lock_guard<std::mutex> lock(generator->mutex_);
+      at::exponential_distribution<double> exponential(lambda);
+      cpu_serial_kernel(iter, [&exponential, generator]() -> scalar_t {
+        return static_cast<scalar_t>(exponential(generator));
+      });
+    }
   });
 }
 
