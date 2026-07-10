@@ -1,6 +1,7 @@
 #pragma once
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/NumericUtils.h>
+#include <numeric>
 
 namespace at::native {
 
@@ -27,6 +28,82 @@ void topk_impl_loop(
   if (k == 0) {
     return;
   }
+
+  // Fast path: contiguous input — sort an index vector instead of
+  // a vector of (value, index) pairs.  This avoids copying all
+  // dim_size values into the pair vector and halves cache pressure
+  // during partial_sort (indices are 8 bytes vs 16 for the pair).
+  if (tmp_values_stride == 1) {
+    std::vector<int64_t> idx(dim_size);
+    for (const auto i : c10::irange(n)) {
+      TensorAccessor<scalar_t, 1> mode_values(
+          reinterpret_cast<scalar_t*>(data[0] + i * strides[0]),
+          &k, &mode_values_stride);
+      TensorAccessor<int64_t, 1> mode_indices(
+          reinterpret_cast<int64_t*>(data[1] + i * strides[1]),
+          &k, &mode_indices_stride);
+      const scalar_t* input_ptr =
+          reinterpret_cast<const scalar_t*>(data[2] + i * strides[2]);
+
+      std::iota(idx.begin(), idx.end(), int64_t{0});
+
+      auto n_2 = dim_size;
+      auto use_partial_sort = k * 64 <= n_2;
+
+      // we want nan to be sorted as top for numpy compatibility
+      if (use_partial_sort) {
+        if (largest) {
+          std::partial_sort(idx.begin(), idx.begin() + k, idx.end(),
+            [input_ptr](int64_t a, int64_t b) -> bool {
+              accscalar_t va = input_ptr[a], vb = input_ptr[b];
+              return (_isnan<accscalar_t>(va) && !_isnan<accscalar_t>(vb)) || (va > vb);
+            });
+        } else {
+          std::partial_sort(idx.begin(), idx.begin() + k, idx.end(),
+            [input_ptr](int64_t a, int64_t b) -> bool {
+              accscalar_t va = input_ptr[a], vb = input_ptr[b];
+              return (!_isnan<accscalar_t>(va) && _isnan<accscalar_t>(vb)) || (va < vb);
+            });
+        }
+      } else {
+        if (largest) {
+          std::nth_element(idx.begin(), idx.begin() + k - 1, idx.end(),
+            [input_ptr](int64_t a, int64_t b) -> bool {
+              accscalar_t va = input_ptr[a], vb = input_ptr[b];
+              return (_isnan<accscalar_t>(va) && !_isnan<accscalar_t>(vb)) || (va > vb);
+            });
+          if (sorted) {
+            std::sort(idx.begin(), idx.begin() + k - 1,
+              [input_ptr](int64_t a, int64_t b) -> bool {
+                accscalar_t va = input_ptr[a], vb = input_ptr[b];
+                return (_isnan<accscalar_t>(va) && !_isnan<accscalar_t>(vb)) || (va > vb);
+              });
+          }
+        } else {
+          std::nth_element(idx.begin(), idx.begin() + k - 1, idx.end(),
+            [input_ptr](int64_t a, int64_t b) -> bool {
+              accscalar_t va = input_ptr[a], vb = input_ptr[b];
+              return (!_isnan<accscalar_t>(va) && _isnan<accscalar_t>(vb)) || (va < vb);
+            });
+          if (sorted) {
+            std::sort(idx.begin(), idx.begin() + k - 1,
+              [input_ptr](int64_t a, int64_t b) -> bool {
+                accscalar_t va = input_ptr[a], vb = input_ptr[b];
+                return (!_isnan<accscalar_t>(va) && _isnan<accscalar_t>(vb)) || (va < vb);
+              });
+          }
+        }
+      }
+
+      for (const auto j : c10::irange(k)) {
+        mode_values[j] = input_ptr[idx[j]];
+        mode_indices[j] = idx[j];
+      }
+    }
+    return;
+  }
+
+  // Fallback: non-contiguous input — original pair-vector path
   using elem_t = std::pair<accscalar_t, int64_t>;
   std::vector<elem_t> queue(dim_size);
   for (const auto i : c10::irange(n)) {
