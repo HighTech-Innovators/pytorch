@@ -655,6 +655,42 @@ std::vector<Tensor> broadcast_tensors(TensorList tensors) {
   return expand_outplace(tensors);
 }
 
+// Fast path for exactly two contiguous inputs catted along any dimension.
+// Interleaves memcpy of the two input slices per outer row, avoiding
+// TensorIterator and cat_serial_stub dispatch overhead entirely.
+static void fastCatTwoInputs(
+    const Tensor& out,
+    const Tensor& first,
+    const Tensor& second,
+    int64_t dim) {
+  auto itemsize = out.element_size();
+  int64_t outer_size = 1;
+  for (int64_t i = 0; i < dim; ++i) {
+    outer_size *= out.size(i);
+  }
+  int64_t inner_suffix = 1;
+  for (int64_t i = dim + 1; i < out.dim(); ++i) {
+    inner_suffix *= out.size(i);
+  }
+  auto first_chunk =
+      static_cast<size_t>(first.size(dim) * inner_suffix * itemsize);
+  auto second_chunk =
+      static_cast<size_t>(second.size(dim) * inner_suffix * itemsize);
+  auto out_row = first_chunk + second_chunk;
+  char* out_ptr = reinterpret_cast<char*>(out.data_ptr());
+  const char* first_ptr =
+      reinterpret_cast<const char*>(first.const_data_ptr());
+  const char* second_ptr =
+      reinterpret_cast<const char*>(second.const_data_ptr());
+  for (int64_t i = 0; i < outer_size; ++i) {
+    std::memcpy(out_ptr, first_ptr, first_chunk);
+    std::memcpy(out_ptr + first_chunk, second_ptr, second_chunk);
+    out_ptr += out_row;
+    first_ptr += first_chunk;
+    second_ptr += second_chunk;
+  }
+}
+
 static void fastCatOutDim0(
     const Tensor& out,
     const MaterializedITensorListRef& inputs) {
@@ -698,8 +734,26 @@ TORCH_IMPL_FUNC(cat_out_cpu)
       fastCatOutDim0(result, materialized);
       return;
     }
-    // TODO: Add fast cat for higher dimensions and support multi-threaded fast
-    // cat
+    // Fast path for exactly two non-empty contiguous inputs along any dim:
+    // direct memcpy with stride arithmetic, no TensorIterator or serial stub.
+    {
+      size_t non_empty_count = 0;
+      size_t first_idx = 0, second_idx = 0;
+      for (size_t i = 0; i < materialized.size(); ++i) {
+        if (!cat_should_skip_tensor(materialized[i])) {
+          if (non_empty_count == 0)
+            first_idx = i;
+          else if (non_empty_count == 1)
+            second_idx = i;
+          ++non_empty_count;
+        }
+      }
+      if (non_empty_count == 2) {
+        fastCatTwoInputs(
+            result, materialized[first_idx], materialized[second_idx], dim);
+        return;
+      }
+    }
   }
 
   // fast path for single thread when both inputs and result are contiguous and
