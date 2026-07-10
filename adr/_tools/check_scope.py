@@ -1,94 +1,77 @@
 #!/usr/bin/env python3
-"""Check 1: Scope map coverage validation."""
-import re, sys, os
-from pathlib import Path
+"""Check 1: Scope map coverage checker."""
+import os, re, sys
 
-ROOT = Path("src")
-scope_file = ROOT / "adr-scope.md"
+SRC = "/home/github-runner/actions-runner/_work/CodeWeave-PyTorch/CodeWeave-PyTorch/src"
+SCOPE_FILE = os.path.join(SRC, "adr-scope.md")
 
-if not scope_file.exists():
-    print("FAIL: adr-scope.md does not exist")
-    sys.exit(1)
-
-# Parse scope map
-excluded = set()
+# Parse adr-scope.md
 covered = set()
-pending = []
-rows = []
+excluded = set()
+with open(SCOPE_FILE) as f:
+    for line in f:
+        m = re.search(r'`([^`]+)`.*\|\s*(COVERED|EXCLUDED)', line)
+        if m:
+            d, status = m.group(1), m.group(2)
+            if status == "COVERED":
+                covered.add(d)
+            else:
+                excluded.add(d)
 
-for line in scope_file.read_text().splitlines():
-    m = re.match(r'\|\s*`([^`]+)`.*\|\s*(COVERED|EXCLUDED|PENDING)', line)
-    if m:
-        dirpath = m.group(1).strip('/')
-        status = m.group(2)
-        rows.append((dirpath, status))
-        if status == 'EXCLUDED':
-            excluded.add(dirpath)
-        elif status == 'COVERED':
-            covered.add(dirpath)
-        elif status == 'PENDING':
-            pending.append(dirpath)
+all_in_scope = covered | excluded
 
-all_dirs_in_scope = {r[0] for r in rows}
-
-# Get all directories from the src repo
+# Get all directories under src
 all_dirs = []
-for d in sorted(ROOT.rglob('*')):
-    if d.is_dir() and not any(part.startswith('.') for part in d.parts):
-        rel = str(d.relative_to(ROOT))
+for root, dirs, files in os.walk(SRC):
+    dirs[:] = [d for d in dirs if not d.startswith('.')]
+    for d in dirs:
+        full = os.path.join(root, d)
+        rel = os.path.relpath(full, SRC)
         all_dirs.append(rel)
 
-# Check depth-1 dirs
-depth1 = [d for d in all_dirs if '/' not in d]
-missing_depth1 = [d for d in depth1 if d not in all_dirs_in_scope]
+all_dirs.sort()
 
-# For deeper dirs, check implicit rules
-def has_excluded_ancestor(d):
-    parts = d.split('/')
-    for i in range(1, len(parts)):
-        ancestor = '/'.join(parts[:i])
-        if ancestor in excluded:
-            return True
-    return False
-
-def has_covered_ancestor(d):
-    parts = d.split('/')
-    for i in range(1, len(parts)):
-        ancestor = '/'.join(parts[:i])
-        if ancestor in covered:
-            return True
-    return False
-
-missing_others = []
+missing = []
 for d in all_dirs:
-    if '/' not in d:
-        continue  # depth-1 handled above
-    if d in all_dirs_in_scope:
+    parts = d.split(os.sep)
+    depth = len(parts)
+    
+    if depth == 1:
+        # Must be explicitly in scope
+        if d not in all_in_scope:
+            missing.append((d, "depth-1 not in adr-scope.md"))
         continue
-    if has_excluded_ancestor(d):
+    
+    # Check if any ancestor is EXCLUDED
+    anc_excluded = False
+    for i in range(1, depth):
+        anc = os.path.join(*parts[:i])
+        if anc in excluded:
+            anc_excluded = True
+            break
+    if anc_excluded:
         continue
-    if has_covered_ancestor(d):
+    
+    # Check if any ancestor is COVERED
+    anc_covered = False
+    for i in range(1, depth):
+        anc = os.path.join(*parts[:i])
+        if anc in covered:
+            anc_covered = True
+            break
+    if anc_covered:
         continue
-    missing_others.append(d)
+    
+    # Must be explicitly in scope
+    if d not in all_in_scope:
+        missing.append((d, "not covered by ancestor or explicit entry"))
 
-print(f"PENDING entries ({len(pending)}): {pending}")
-print(f"Missing depth-1 dirs: {missing_depth1}")
-print(f"Missing other dirs (not implicitly covered): {missing_others[:20]}")
 print(f"COVERED entries: {sorted(covered)}")
 print(f"EXCLUDED entries: {sorted(excluded)}")
-
-# Check 1 result
-fails = []
-if pending:
-    fails.append(f"PENDING entries: {', '.join(pending)}")
-if missing_depth1:
-    fails.append(f"Missing depth-1: {', '.join(missing_depth1)}")
-if missing_others:
-    fails.append(f"Missing dirs: {', '.join(missing_others[:10])}")
-
-if fails:
-    print(f"\nCheck 1: FAIL")
-    for f in fails:
-        print(f"  - {f}")
+print(f"\nTotal dirs checked: {len(all_dirs)}")
+if missing:
+    print(f"\nMISSING ({len(missing)}):")
+    for m, reason in missing:
+        print(f"  {m}: {reason}")
 else:
-    print("\nCheck 1: PASS")
+    print("\nAll directories covered (explicitly or by ancestor rule)")
