@@ -25,6 +25,7 @@
 #include <c10/util/accumulate.h>
 #include <c10/util/env.h>
 #include <c10/util/irange.h>
+#include <cstring>
 #include <variant>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -1415,6 +1416,49 @@ static void addmm_impl_cpu_(
   const auto result_sizes = result.sizes();
 
   if (result.numel() == 0) {
+    return;
+  }
+
+  // Fast path for single-row addmm: [1, K] x [K, N] -> [1, N] with beta=1, alpha=1, N>1.
+  // This is the dominant pattern in autoregressive decoding (nn.Linear bias addition).
+  // Avoids the copy_(self) dispatch overhead by using a raw memcpy for the bias,
+  // and skips all stride analysis since the layout is fully determined.
+  // N==1 is excluded: the general path uses gemm(Transpose,Transpose,...) for that case,
+  // while this fast path uses gemm(NoTranspose,NoTranspose,...), which selects a different
+  // BLAS code path and can produce a 1-ULP difference. N==1 is not performance-critical.
+  if (m1_sizes[0] == 1 && m1_sizes[1] != 0 && m2_sizes[1] > 1 &&
+      beta.toComplexDouble() == 1.0 && alpha.toComplexDouble() == 1.0 &&
+      !result.is_conj() && !m1.is_conj() && !m2.is_conj() && !self.is_conj() &&
+      result.is_contiguous() && self.is_contiguous() &&
+      result.scalar_type() == at::kFloat &&
+      m1.is_contiguous() && m2_strides[0] >= std::max(int64_t{1}, m2_sizes[1]) && m2_strides[1] == 1) {
+    // result is [1, N] row-contiguous (strides [N, 1])
+    // m1 is [1, K] row-contiguous
+    // m2 is [K, N] row-contiguous (strides[1]==1, strides[0]>=N)
+    const int64_t n = m2_sizes[1];
+    const int64_t k = m1_sizes[1];
+
+    // Copy bias into result via raw memcpy (avoids copy_ operator dispatch)
+    if (!self.is_same(result)) {
+      std::memcpy(
+          result.mutable_data_ptr<float>(),
+          self.const_data_ptr<float>(),
+          static_cast<size_t>(n) * sizeof(float));
+    }
+
+    // GEMM in column-major convention: C[N,1] = 1.0 * A[N,K] * B[K,1] + 1.0 * C[N,1]
+    // where A is m2 data ([K,N] row-major = [N,K] col-major with lda=stride0),
+    // B is m1 data ([1,K] row-major = [K,1] col-major with ldb=K),
+    // C is result data ([1,N] row-major = [N,1] col-major with ldc=N).
+    at::native::cpublas::gemm(
+        TransposeType::NoTranspose,
+        TransposeType::NoTranspose,
+        n, 1, k,
+        1.0f,
+        m2.const_data_ptr<float>(), m2_strides[0],
+        m1.const_data_ptr<float>(), m1_strides[0],
+        1.0f,
+        result.mutable_data_ptr<float>(), result_strides[0]);
     return;
   }
 
