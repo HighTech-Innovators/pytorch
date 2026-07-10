@@ -342,6 +342,215 @@ inline void pad_remain_row_col_zero(
 }
 
 
+// Single-query fast path (q_seq_len == 1): uses the same cpublas::gemm calls and
+// fused softmax kernels as cpu_flash_attention, but allocates per-thread buffers
+// sized for one query row only (kv_split_size + headSize elements) instead of
+// q_split_size rows (32 * kv_split_size + 32 * headSize elements), improving cache
+// utilisation for the autoregressive decoding shape without changing any FP math.
+template <typename scalar_t, typename mask_t>
+void cpu_flash_attention_single_query(
+    const Tensor& output,
+    const Tensor& logsumexp,
+    const at::Tensor& q,
+    const at::Tensor& k,
+    const at::Tensor& v,
+    double dropout_p,
+    bool is_causal,
+    std::optional<Tensor> attn_mask,
+    std::optional<double> scale) {
+  (void)dropout_p;
+  using accum_t = at::opmath_type<scalar_t>;
+  using Vec = vec::Vectorized<accum_t>;
+  constexpr bool is_reduced_type = is_reduced_floating_point_v<scalar_t>;
+  // Must match the kv_split_size used by cpu_flash_attention for q_seq_len < 192
+  constexpr int64_t kv_split_size = 512;
+
+  const at::Tensor query = q.stride(-1) == 1 ? q.transpose(1, 2) : q.transpose(1, 2).contiguous();
+  const at::Tensor key = k.stride(-1) == 1 ? k.transpose(1, 2) : k.transpose(1, 2).contiguous();
+  const at::Tensor value = v.stride(-1) == 1 ? v.transpose(1, 2) : v.transpose(1, 2).contiguous();
+
+  accum_t scaling_factor = sdp::calculate_scale(query, scale).expect_float();
+
+  int64_t batchSize = query.size(0);
+  int64_t kvSize = value.size(1);
+  int64_t num_head = query.size(2);
+  int64_t kv_num_head = key.size(2);
+  int64_t repeat_factor = num_head / kv_num_head;
+  int64_t headSize = query.size(3);
+
+  bool has_attn_mask = attn_mask.has_value() && attn_mask.value().numel();
+  if (has_attn_mask) {
+    reshape_attn_mask_to_4d(attn_mask.value(), batchSize, num_head, 1, kvSize);
+  }
+
+  int64_t qStrideB = query.stride(0);
+  int64_t qStrideM = query.stride(1);
+  int64_t qStrideH = query.stride(2);
+  int64_t kStrideB = key.stride(0);
+  int64_t kStrideN = key.stride(1);
+  int64_t kStrideH = key.stride(2);
+  int64_t vStrideB = value.stride(0);
+  int64_t vStrideN = value.stride(1);
+  int64_t vStrideH = value.stride(2);
+  int64_t oStrideB = output.stride(0);
+  int64_t oStrideH = output.stride(2);
+  int64_t lStrideB = logsumexp.stride(0);
+  int64_t lStrideH = logsumexp.stride(2);
+  int64_t mStrideB = (has_attn_mask && attn_mask.value().size(0) > 1) ? attn_mask.value().stride(0) : 0;
+  int64_t mStrideH = (has_attn_mask && attn_mask.value().size(1) > 1) ? attn_mask.value().stride(1) : 0;
+  int64_t mStrideN = (has_attn_mask && attn_mask.value().size(3) > 1) ? attn_mask.value().stride(3) : 0;
+
+  const scalar_t* q_data = query.const_data_ptr<scalar_t>();
+  const scalar_t* k_data = key.const_data_ptr<scalar_t>();
+  const scalar_t* v_data = value.const_data_ptr<scalar_t>();
+  mask_t* mask_data = has_attn_mask ? attn_mask.value().data_ptr<mask_t>() : nullptr;
+  scalar_t* out_data = output.data_ptr<scalar_t>();
+  accum_t* lse_data = logsumexp.data_ptr<accum_t>();
+
+  int64_t num_thread = at::get_num_threads();
+  // Allocate per-thread buffers for a single query row: [kv_split_size] scores +
+  // [1] running max + [1] running sum + [headSize] output accumulator.
+  // This is ~32x smaller than the original's q_split_size * kv_split_size layout.
+  int64_t size_per_thread = kv_split_size + 2 + headSize;
+  at::Tensor buf = at::empty({num_thread, size_per_thread},
+      query.options().dtype(toOpMathType(query.scalar_type())));
+  accum_t* buf_data = buf.data_ptr<accum_t>();
+  // For reduced-precision types (Half, BFloat16), the output GEMM (V @ softmax)
+  // requires attention weights in scalar_t, not accum_t (float).  Mirror the
+  // buf_reduced pattern from cpu_flash_attention.
+  at::Tensor buf_reduced = at::empty(
+      {num_thread, is_reduced_type ? kv_split_size : 0},
+      query.options());
+  scalar_t* buf_reduced_data = is_reduced_type ? buf_reduced.data_ptr<scalar_t>() : nullptr;
+
+  at::parallel_for(0, batchSize * num_head, 1, [&](int64_t begin, int64_t end) {
+    int ompIdx = at::get_thread_num();
+    accum_t* buf_ptr = buf_data + ompIdx * size_per_thread;
+    accum_t* qk_data = buf_ptr;
+    accum_t* qk_max_data = buf_ptr + kv_split_size;
+    accum_t* qk_sum_data = buf_ptr + kv_split_size + 1;
+    accum_t* dst_data = buf_ptr + kv_split_size + 2;
+    scalar_t* qk_reduced_data = is_reduced_type
+        ? buf_reduced_data + ompIdx * kv_split_size
+        : nullptr;
+
+    for (int64_t idx = begin; idx < end; ++idx) {
+      int64_t i = idx / num_head;
+      int64_t j = idx % num_head;
+      int64_t kv_j = j / repeat_factor;
+
+      fill_stub(qk_max_data, -std::numeric_limits<accum_t>::infinity(), 1);
+      fill_stub(qk_sum_data, static_cast<accum_t>(0), 1);
+
+      // For q at position 0, causal masking allows attending to position 0 only
+      int64_t num_keys = is_causal ? std::min(int64_t(1), kvSize) : kvSize;
+
+      for (int64_t n = 0; n < num_keys; n += kv_split_size) {
+        int64_t kvBlockSize = std::min(kv_split_size, kvSize - n);
+
+        // QK GEMM: same call as cpu_flash_attention (qBlockSize=1, m=0)
+        cpublas::gemm(
+            TransposeType::Transpose,
+            TransposeType::NoTranspose,
+            kvBlockSize,
+            1,
+            headSize,
+            static_cast<accum_t>(1),
+            k_data + i * kStrideB + kv_j * kStrideH + n * kStrideN,
+            kStrideN,
+            q_data + i * qStrideB + j * qStrideH,
+            qStrideM,
+            static_cast<accum_t>(0),
+            qk_data,
+            kvBlockSize);
+
+        // Causal fill: same logic as original (m=0, row=0 => last_col = 0 - n)
+        if (is_causal && num_keys - n <= kv_split_size) {
+          int64_t last_col = -n;
+          if (last_col + 1 < kvBlockSize) {
+            fill_stub(qk_data + last_col + 1,
+                -std::numeric_limits<accum_t>::infinity(),
+                kvBlockSize - last_col - 1);
+          }
+        }
+
+        accum_t tmp_max = 0, tmp_sum = 0, exp_tmp = 0;
+        if (has_attn_mask) {
+          // m=0, row=0: mask ptr offset matches original (m+row)*mStrideM = 0
+          mask_t* m_ptr = mask_data + i * mStrideB + j * mStrideH + (mStrideN == 0 ? 0 : n);
+#if __GNUC__ == 11 && defined(__ARM_FEATURE_SVE)
+          _scale_attn_mask_fusion_kernel(
+              qk_data, m_ptr, (int)kvBlockSize, qk_data, scaling_factor, mStrideN == 0);
+#else
+          if (mStrideN == 0) {
+            _scale_attn_mask_fusion_kernel</*is_stride_0*/ true>(
+                qk_data, m_ptr, (int)kvBlockSize, qk_data, scaling_factor);
+          } else {
+            _scale_attn_mask_fusion_kernel</*is_stride_0*/ false>(
+                qk_data, m_ptr, (int)kvBlockSize, qk_data, scaling_factor);
+          }
+#endif
+          tmp_max = at::vec::reduce_all<accum_t>(
+              [](Vec& x, Vec& y) { return at::vec::maximum(x, y); },
+              qk_data, kvBlockSize);
+        } else {
+          _mul_reduce_max_fusion_kernel(
+              qk_data, scaling_factor, (int)kvBlockSize, qk_data, tmp_max);
+        }
+
+        tmp_max = qk_max_data[0] > tmp_max ? qk_max_data[0] : tmp_max;
+        if (tmp_max == -std::numeric_limits<accum_t>::infinity()) {
+          // Fill the buffer the output GEMM reads from with zeros.
+          fill_stub(conditional_data_ptr(qk_data, qk_reduced_data),
+              static_cast<scalar_t>(0), kvBlockSize);
+        } else {
+          tmp_sum = tmp_max;
+          // Write softmax output into scalar_t buffer for reduced types so the
+          // output GEMM receives correctly-typed attention weights.
+          _exp_reduce_sum_fusion_kernel(qk_data, (int)kvBlockSize,
+              conditional_data_ptr(qk_data, qk_reduced_data), tmp_sum);
+          exp_tmp = std::exp(qk_max_data[0] - tmp_max);
+          qk_sum_data[0] = tmp_sum + exp_tmp * qk_sum_data[0];
+          qk_max_data[0] = tmp_max;
+          if (n > 0) {
+            vec::map<accum_t>(
+                [exp_tmp](Vec x) { return x * Vec(exp_tmp); },
+                dst_data, dst_data, headSize);
+          }
+        }
+
+        // Output GEMM: same call as cpu_flash_attention (qBlockSize=1, m=0)
+        cpublas::gemm(
+            TransposeType::NoTranspose,
+            TransposeType::NoTranspose,
+            headSize,
+            1,
+            kvBlockSize,
+            static_cast<accum_t>(1),
+            v_data + i * vStrideB + kv_j * vStrideH + n * vStrideN,
+            vStrideN,
+            conditional_data_ptr(qk_data, qk_reduced_data),
+            kvBlockSize,
+            n == 0 ? static_cast<accum_t>(0) : static_cast<accum_t>(1),
+            dst_data,
+            headSize);
+      }
+
+      // Normalize and write output: same as original
+      qk_max_data[0] = (qk_max_data[0] == -std::numeric_limits<accum_t>::infinity()) ? 0 : qk_max_data[0];
+      qk_sum_data[0] = (qk_sum_data[0] == 0) ? 1 : qk_sum_data[0];
+      accum_t sum_reciprocal = 1 / qk_sum_data[0];
+      vec::map<scalar_t>(
+          [sum_reciprocal](Vec x) { return x * Vec(sum_reciprocal); },
+          out_data + i * oStrideB + j * oStrideH,
+          dst_data,
+          headSize);
+
+      lse_data[i * lStrideB + j * lStrideH] = qk_max_data[0] + std::log(qk_sum_data[0]);
+    }
+  });
+}
+
 template <typename scalar_t, typename mask_t, int64_t q_split_size, int64_t kv_split_size, bool with_pack=false>
 void cpu_flash_attention(
     const Tensor& output,
@@ -1164,6 +1373,25 @@ void flash_attention_kernel_impl(
     std::optional<Tensor> attn_mask,
     std::optional<double> scale) {
   auto q_seq_len = query.size(2);
+
+  // Fast path for single-query (autoregressive decoding): bypass block iteration
+  if (q_seq_len == 1) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(kBFloat16, kHalf, query.scalar_type(), "flash_attention", [&] {
+      if (!attn_mask.has_value()) {
+        using accum_t = at::opmath_type<scalar_t>;
+        cpu_flash_attention_single_query<scalar_t, accum_t>(
+            output, logsumexp, query, key, value,
+            dropout_p, is_causal, attn_mask, scale);
+      } else {
+        AT_DISPATCH_MASK_TYPES(attn_mask.value().scalar_type(), "flash_attention_mask", [&]() {
+          cpu_flash_attention_single_query<scalar_t, mask_t>(
+              output, logsumexp, query, key, value,
+              dropout_p, is_causal, attn_mask, scale);
+        });
+      }
+    });
+    return;
+  }
 
   // When q_seq_len and k_seq_len are long enough,
   // cpu_flash_attention with pack has better performance.
