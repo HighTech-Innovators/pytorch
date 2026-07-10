@@ -103,6 +103,39 @@ void bernoulli_scalar_kernel(const TensorBase &self, double p, std::optional<Gen
 
 void exponential_kernel_default(TensorIteratorBase& iter, double lambda, std::optional<Generator> gen) {
   CPUGeneratorImpl* generator = get_generator_or_default<CPUGeneratorImpl>(gen, detail::getDefaultCPUGenerator());
+
+  // Fast path: contiguous float/double tensors bypass TensorIterator dispatch.
+  // Replicates the exact RNG stream and math of the generic path:
+  //   uniform_real_distribution<double>(0,1) -> transformation::exponential<double>
+  // which draws one random64() per element and computes (-1/lambda)*log1p(-u).
+  if (iter.numel() > 0 && iter.ntensors() == 1) {
+    auto& t = iter.tensor(0);
+    if (t.is_contiguous() &&
+        (t.scalar_type() == at::kFloat || t.scalar_type() == at::kDouble)) {
+      const int64_t n = t.numel();
+      const double neg_inv_lambda = -1.0 / lambda;
+      // Same constants as transformation::uniform_real<double>
+      constexpr uint64_t MASK = (static_cast<uint64_t>(1) << std::numeric_limits<double>::digits) - 1;
+      constexpr double DIVISOR = 1.0 / (static_cast<uint64_t>(1) << std::numeric_limits<double>::digits);
+
+      std::lock_guard<std::mutex> lock(generator->mutex_);
+      if (t.scalar_type() == at::kFloat) {
+        float* data = t.data_ptr<float>();
+        for (int64_t i = 0; i < n; ++i) {
+          double u = static_cast<double>(generator->random64() & MASK) * DIVISOR;
+          data[i] = static_cast<float>(neg_inv_lambda * std::log1p(-u));
+        }
+      } else {
+        double* data = t.data_ptr<double>();
+        for (int64_t i = 0; i < n; ++i) {
+          double u = static_cast<double>(generator->random64() & MASK) * DIVISOR;
+          data[i] = neg_inv_lambda * std::log1p(-u);
+        }
+      }
+      return;
+    }
+  }
+
   templates::cpu::exponential_kernel(iter, lambda, generator);
 }
 
