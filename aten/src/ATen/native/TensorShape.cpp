@@ -671,6 +671,40 @@ static void fastCatOutDim0(
   TORCH_CHECK(outBytes == totalBytes);
 }
 
+// Fast path for cat with dim > 0 when all inputs and result are contiguous.
+// Avoids TensorIterator construction overhead for small tensors by performing
+// direct memcpy of each input's contiguous slices into the result buffer.
+static void fastCatOutDimN(
+    const Tensor& result,
+    const MaterializedITensorListRef& inputs,
+    int64_t dim) {
+  const int64_t elem_size = elementSize(result.scalar_type());
+  // outer = product of dims before cat dimension
+  int64_t outer = 1;
+  for (int64_t i = 0; i < dim; ++i) {
+    outer *= result.sizes()[i];
+  }
+  // inner = product of dims after cat dimension (stride of the cat dim)
+  const int64_t inner = result.strides()[dim];
+  char* result_ptr = reinterpret_cast<char*>(result.data_ptr());
+  const int64_t result_dim_stride = result.sizes()[dim] * inner * elem_size;
+
+  for (int64_t o = 0; o < outer; ++o) {
+    char* row_ptr = result_ptr + o * result_dim_stride;
+    int64_t offset_bytes = 0;
+    for (const Tensor& input : inputs) {
+      if (cat_should_skip_tensor(input)) {
+        continue;
+      }
+      const int64_t chunk_bytes = input.sizes()[dim] * inner * elem_size;
+      const char* src = reinterpret_cast<const char*>(input.const_data_ptr()) +
+          o * chunk_bytes;
+      std::memcpy(row_ptr + offset_bytes, src, chunk_bytes);
+      offset_bytes += chunk_bytes;
+    }
+  }
+}
+
 TORCH_IMPL_FUNC(cat_out_cpu)
 (const ITensorListRef& tensors,
  int64_t dim,
@@ -698,8 +732,9 @@ TORCH_IMPL_FUNC(cat_out_cpu)
       fastCatOutDim0(result, materialized);
       return;
     }
-    // TODO: Add fast cat for higher dimensions and support multi-threaded fast
-    // cat
+    // Fast path for dim > 0: direct memcpy avoiding TensorIterator overhead
+    fastCatOutDimN(result, materialized, dim);
+    return;
   }
 
   // fast path for single thread when both inputs and result are contiguous and
