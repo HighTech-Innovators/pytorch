@@ -33,20 +33,69 @@ multinomial_with_replacement_apply(
   int64_t n_categories = self.size(-1);
   int64_t n_dist = self.dim() > 1 ? self.size(-2) : 1;
 
-  /* cumulative probability distribution vector */
-  Tensor cum_dist = at::empty({n_categories}, self.options());
-
   const scalar_t* const self_ptr = self.const_data_ptr<scalar_t>();
-  scalar_t* const cum_dist_ptr = cum_dist.data_ptr<scalar_t>();
   int64_t* const result_ptr = result.data_ptr<int64_t>();
 
   auto self_stride_0 = self.dim() > 1 ? self.stride(-2) : 0;
   auto self_stride_1 = self.stride(-1);
 
-  auto cum_dist_stride_0 = cum_dist.stride(0);
-
   auto result_dist_stride_0 = result.dim() > 1 ? result.stride(-2) : 0;
   auto result_dist_stride_1 = result.stride(-1);
+
+  // Fast path for n_sample == 1: skip full CDF allocation and normalization.
+  // Validate + compute sum in one pass, then linear scan with early exit.
+  if (n_sample == 1) {
+    for (const auto i : c10::irange(n_dist)) {
+      scalar_t sum = 0;
+      for (const auto j : c10::irange(n_categories)) {
+        scalar_t val = self_ptr[i * self_stride_0 + j * self_stride_1];
+        TORCH_CHECK(
+            val >= 0,
+            "invalid multinomial distribution (encountering probability entry < 0)");
+#if defined(_LIBCPP_VERSION)
+        TORCH_CHECK(
+            std::isfinite(static_cast<double>(val)),
+            "invalid multinomial distribution (encountering probability entry = infinity or NaN)");
+#else
+        TORCH_CHECK(
+            std::isfinite(val),
+            "invalid multinomial distribution (encountering probability entry = infinity or NaN)");
+#endif
+        sum += val;
+      }
+      TORCH_CHECK(
+          sum > 0,
+          "invalid multinomial distribution (sum of probabilities <= 0)");
+
+      at::uniform_real_distribution<double> uniform(0, 1);
+      double uniform_sample = uniform(gen);
+
+      // Linear scan: accumulate running sum, normalize inline, compare.
+      // Matches the original semantics: find first j where
+      // (running_sum / sum) >= uniform_sample, with last bucket forced to 1.
+      scalar_t running_sum = 0;
+      int64_t sample_idx = n_categories - 1;
+      for (const auto j : c10::irange(n_categories)) {
+        running_sum += self_ptr[i * self_stride_0 + j * self_stride_1];
+        scalar_t normalized = (j == n_categories - 1)
+            ? static_cast<scalar_t>(1)
+            : running_sum / sum;
+        if (!(static_cast<double>(normalized) < uniform_sample)) {
+          sample_idx = j;
+          break;
+        }
+      }
+      result_ptr[i * result_dist_stride_0] = sample_idx;
+    }
+    return;
+  }
+
+  /* cumulative probability distribution vector */
+  Tensor cum_dist = at::empty({n_categories}, self.options());
+
+  scalar_t* const cum_dist_ptr = cum_dist.data_ptr<scalar_t>();
+
+  auto cum_dist_stride_0 = cum_dist.stride(0);
 
   for (const auto i : c10::irange(n_dist)) {
     /* Get normalized cumulative distribution from prob distribution */
@@ -129,20 +178,66 @@ multinomial_with_replacement_apply(
   int64_t n_categories = self.size(-1);
   int64_t n_dist = self.dim() > 1 ? self.size(-2) : 1;
 
-  /* cumulative probability distribution vector */
-  Tensor cum_dist = at::empty({n_categories}, self.options().dtype(kFloat));
-
   const scalar_t* const self_ptr = self.const_data_ptr<scalar_t>();
-  float* const cum_dist_ptr = cum_dist.data_ptr<float>();
   int64_t* const result_ptr = result.data_ptr<int64_t>();
 
   auto self_stride_0 = self.dim() > 1 ? self.stride(-2) : 0;
   auto self_stride_1 = self.stride(-1);
 
-  auto cum_dist_stride_0 = cum_dist.stride(0);
-
   auto result_dist_stride_0 = result.dim() > 1 ? result.stride(-2) : 0;
   auto result_dist_stride_1 = result.stride(-1);
+
+  // Fast path for n_sample == 1: skip full CDF allocation and normalization.
+  if (n_sample == 1) {
+    for (const auto i : c10::irange(n_dist)) {
+      float sum = 0;
+      for (const auto j : c10::irange(n_categories)) {
+        float val = self_ptr[i * self_stride_0 + j * self_stride_1];
+        TORCH_CHECK(
+            val >= 0,
+            "invalid multinomial distribution (encountering probability entry < 0)");
+#if defined(_LIBCPP_VERSION)
+        TORCH_CHECK(
+            std::isfinite(static_cast<double>(val)),
+            "invalid multinomial distribution (encountering probability entry = infinity or NaN)");
+#else
+        TORCH_CHECK(
+            std::isfinite(val),
+            "invalid multinomial distribution (encountering probability entry = infinity or NaN)");
+#endif
+        sum += val;
+      }
+      TORCH_CHECK(
+          sum > 0,
+          "invalid multinomial distribution (sum of probabilities <= 0)");
+
+      at::uniform_real_distribution<double> uniform(0, 1);
+      double uniform_sample = uniform(gen);
+
+      float running_sum = 0;
+      int64_t sample_idx = n_categories - 1;
+      for (const auto j : c10::irange(n_categories)) {
+        running_sum += static_cast<float>(
+            self_ptr[i * self_stride_0 + j * self_stride_1]);
+        float normalized = (j == n_categories - 1)
+            ? 1.0f
+            : running_sum / sum;
+        if (!(static_cast<double>(normalized) < uniform_sample)) {
+          sample_idx = j;
+          break;
+        }
+      }
+      result_ptr[i * result_dist_stride_0] = sample_idx;
+    }
+    return;
+  }
+
+  /* cumulative probability distribution vector */
+  Tensor cum_dist = at::empty({n_categories}, self.options().dtype(kFloat));
+
+  float* const cum_dist_ptr = cum_dist.data_ptr<float>();
+
+  auto cum_dist_stride_0 = cum_dist.stride(0);
 
   for (const auto i : c10::irange(n_dist)) {
     /* Get normalized cumulative distribution from prob distribution */
